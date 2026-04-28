@@ -4,6 +4,7 @@ import { Home01Icon, PaintBrush01Icon, CubeIcon, Settings01Icon } from '@hugeico
 
 import { AudioRecorder } from './audio-recorder';
 import logoUrl from './logo.png';
+import coverUrl from '../../assets/cover.png';
 import type {
   AppStatus,
   BootstrapState,
@@ -609,14 +610,10 @@ function HomePage({ status, bootstrap, setPage }: { status: AppStatus; bootstrap
         <h2 className="page-title serif">Welcome back</h2>
       </div>
 
-      <div className="banner">
+      <div className="banner" style={{ backgroundImage: `url(${coverUrl})` }}>
         <div className="banner-content">
           <h3 className="serif">Press Fn. Speak. Done.</h3>
           <p>Your voice, transcribed and polished entirely on your Mac. No cloud. No latency.</p>
-        </div>
-        <div className="banner-visual" aria-hidden="true">
-          <div className="banner-circle" />
-          <div className="banner-circle banner-circle-2" />
         </div>
       </div>
 

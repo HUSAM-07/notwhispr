@@ -316,26 +316,33 @@ button { cursor: pointer; }
   position: relative;
   border-radius: 16px;
   padding: 36px 40px;
-  background: #1a1a1a;
+  background-color: #1a1a1a;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   color: white;
   overflow: hidden;
   margin-bottom: 24px;
+  min-height: 140px;
 }
 
 .banner::before {
   content: "";
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(ellipse at 15% 60%, rgba(120, 90, 220, 0.25), transparent 55%),
-    radial-gradient(ellipse at 85% 40%, rgba(220, 140, 70, 0.2), transparent 55%);
+  background: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.78) 0%,
+    rgba(0, 0, 0, 0.55) 45%,
+    rgba(0, 0, 0, 0.15) 100%
+  );
   pointer-events: none;
 }
 
 .banner-content {
   position: relative;
   z-index: 1;
-  max-width: 380px;
+  max-width: 420px;
 }
 
 .banner-content h3 {
@@ -343,40 +350,15 @@ button { cursor: pointer; }
   font-size: 26px;
   font-weight: 400;
   line-height: 1.2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .banner-content p {
   margin: 10px 0 0;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.78);
   line-height: 1.5;
-}
-
-.banner-visual {
-  position: absolute;
-  right: 30px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 120px;
-  height: 120px;
-}
-
-.banner-circle {
-  position: absolute;
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.12);
-  top: 10px;
-  right: 0;
-}
-
-.banner-circle-2 {
-  width: 60px;
-  height: 60px;
-  top: 30px;
-  right: 40px;
-  border-color: rgba(255, 255, 255, 0.08);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 /* ────────────────────────────────────────────────
@@ -776,5 +758,4 @@ button { cursor: pointer; }
   .page-title { font-size: 26px; }
   .banner { padding: 28px 24px; }
   .banner-content h3 { font-size: 22px; }
-  .banner-visual { display: none; }
 }
