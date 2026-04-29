@@ -155,25 +155,35 @@ export async function startFnListener(
         type?: string;
         message?: string;
         terminalCommandMode?: boolean;
+        diagramMode?: boolean;
       };
 
       if (message.type === 'fnDown') {
-        onEvent({ type: 'down', terminalCommandMode: Boolean(message.terminalCommandMode) });
+        onEvent({
+          type: 'down',
+          terminalCommandMode: Boolean(message.terminalCommandMode),
+          diagramMode: Boolean(message.diagramMode),
+        });
       }
 
       if (message.type === 'fnUp') {
-        onEvent({ type: 'up', terminalCommandMode: Boolean(message.terminalCommandMode) });
+        onEvent({
+          type: 'up',
+          terminalCommandMode: Boolean(message.terminalCommandMode),
+          diagramMode: Boolean(message.diagramMode),
+        });
       }
 
       if (message.type === 'modifierChanged') {
         onEvent({
           type: 'modifierChanged',
           terminalCommandMode: Boolean(message.terminalCommandMode),
+          diagramMode: Boolean(message.diagramMode),
         });
       }
 
       if (message.type === 'error') {
-        onError?.(message.message ?? 'The native helper could not watch the Fn key.');
+        onError?.(message.message ?? 'The native helper could not watch the Option key.');
       }
     } catch {
       // Ignore malformed lines from the native helper.

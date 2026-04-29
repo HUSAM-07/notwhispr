@@ -14,18 +14,21 @@ import {
 import { getPermissionState } from './permissions';
 import { loadSettings } from './settings';
 import { ensureStorage } from './storage';
-import { createMainWindow, createOverlayWindow, positionOverlayWindow } from './windows';
-import type { AppSettings, AppStatus } from '../shared/types';
+import { createMainWindow, createMindmapWindow, createOverlayWindow, positionOverlayWindow } from './windows';
+import type { AppSettings, AppStatus, MindmapPreviewRequest } from '../shared/types';
 
 const projectRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
 
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
+let mindmapWindow: BrowserWindow | null = null;
+let pendingMindmapPreview: MindmapPreviewRequest | null = null;
 let tray: Tray | null = null;
 let settings: AppSettings;
 let status: AppStatus = getInitialStatus();
 let helperReady = false;
 let isQuitting = false;
+let suppressMainWindowUntil = 0;
 
 function shutdown(): void {
   if (isQuitting) {
@@ -61,6 +64,7 @@ async function showOverlay(): Promise<void> {
   }
 
   positionOverlayWindow(window);
+  window.setIgnoreMouseEvents(status.phase !== 'listening');
   window.showInactive();
 }
 
@@ -73,6 +77,11 @@ function hideOverlay(): void {
 function setStatus(nextStatus: AppStatus): void {
   status = nextStatus;
   broadcast('app:status', nextStatus);
+  overlayWindow?.setIgnoreMouseEvents(nextStatus.phase !== 'listening');
+
+  if (nextStatus.phase === 'idle') {
+    suppressMainWindowUntil = Date.now() + 1_500;
+  }
 
   if (settings.showOverlay || nextStatus.phase !== 'idle') {
     void showOverlay();
@@ -100,6 +109,56 @@ function hideMainWindow(): void {
   }
 
   mainWindow.hide();
+}
+
+function suppressMainWindowForOverlayFlow(): void {
+  suppressMainWindowUntil = Date.now() + 10 * 60_000;
+  hideMainWindow();
+}
+
+async function ensureMindmapWindow(): Promise<BrowserWindow | null> {
+  if (mindmapWindow && !mindmapWindow.isDestroyed()) {
+    return mindmapWindow;
+  }
+
+  mindmapWindow = await createMindmapWindow();
+  attachWindowDiagnostics(mindmapWindow, 'mindmap');
+  mindmapWindow.on('closed', () => {
+    mindmapWindow = null;
+  });
+  mindmapWindow.on('ready-to-show', () => {
+    mindmapWindow?.show();
+    mindmapWindow?.focus();
+  });
+  return mindmapWindow;
+}
+
+async function openMindmapPreview(request: MindmapPreviewRequest): Promise<void> {
+  pendingMindmapPreview = request;
+  const window = await ensureMindmapWindow();
+  if (!window || window.isDestroyed()) return;
+
+  if (window.webContents.isLoading()) {
+    window.webContents.once('did-finish-load', () => {
+      window.webContents.send('mindmap:previewUpdated', pendingMindmapPreview);
+    });
+  } else {
+    window.webContents.send('mindmap:previewUpdated', pendingMindmapPreview);
+  }
+
+  window.show();
+  window.focus();
+}
+
+function getMindmapPreview(): MindmapPreviewRequest | null {
+  return pendingMindmapPreview;
+}
+
+function closeMindmapPreview(): void {
+  pendingMindmapPreview = null;
+  if (mindmapWindow && !mindmapWindow.isDestroyed()) {
+    mindmapWindow.close();
+  }
 }
 
 function attachWindowDiagnostics(window: BrowserWindow, label: string): void {
@@ -145,13 +204,14 @@ async function ensureHotkeyListener(): Promise<void> {
       broadcast('hotkey:event', event);
 
       if (event.type === 'down') {
+        suppressMainWindowForOverlayFlow();
         void showOverlay();
       }
     },
     (message) => {
       setStatus({
         phase: 'error',
-        title: 'Fn key unavailable',
+        title: 'Option key unavailable',
         detail: message,
       });
     },
@@ -198,6 +258,9 @@ async function bootstrap(): Promise<void> {
     getHelperReady: () => helperReady,
     showMainWindow,
     hideMainWindow,
+    openMindmapPreview,
+    getMindmapPreview,
+    closeMindmapPreview,
     ensureHotkeyListener,
   });
 
@@ -243,6 +306,14 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 app.on('activate', () => {
+  if (
+    status.phase !== 'idle' ||
+    Date.now() < suppressMainWindowUntil ||
+    (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible())
+  ) {
+    return;
+  }
+
   showMainWindow();
 });
 

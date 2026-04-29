@@ -1,11 +1,17 @@
-import { ipcMain, shell } from 'electron';
+import { writeFile } from 'node:fs/promises';
+
+import { clipboard, dialog, ipcMain, nativeImage, shell } from 'electron';
 
 import type {
   AppSettings,
   AppStatus,
   BootstrapState,
+  CopyMindmapPngResult,
   DictationRequest,
+  MindmapPngRequest,
+  MindmapPreviewRequest,
   OpenRouterModelInfo,
+  SaveMindmapPngResult,
   UpdateSettingsInput,
 } from '../shared/types';
 import { RECOMMENDED_TEXT_MODEL } from '../shared/recommendations';
@@ -27,6 +33,9 @@ interface IpcDependencies {
   getHelperReady: () => boolean;
   showMainWindow: () => void;
   hideMainWindow: () => void;
+  openMindmapPreview: (request: MindmapPreviewRequest) => Promise<void>;
+  getMindmapPreview: () => MindmapPreviewRequest | null;
+  closeMindmapPreview: () => void;
   ensureHotkeyListener: () => Promise<void>;
 }
 
@@ -114,7 +123,7 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     dependencies.setStatus({
       phase: 'idle',
       title: 'Ready',
-      detail: 'Hold Fn to dictate. Release Fn to paste.',
+      detail: 'Hold Option to dictate. Release Option to paste.',
     });
 
     return buildBootstrapState();
@@ -147,7 +156,7 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     dependencies.setStatus({
       phase: 'idle',
       title: 'Ready',
-      detail: 'Hold Fn to dictate. Release Fn to paste.',
+      detail: 'Hold Option to dictate. Release Option to paste.',
     });
 
     return buildBootstrapState();
@@ -161,12 +170,46 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
       settings: dependencies.getSettings(),
       targetFocus: request.targetFocus,
       forceTerminalCommandMode: request.forceTerminalCommandMode,
+      disableTerminalCommandMode: request.disableTerminalCommandMode,
+      forceDiagramMode: request.forceDiagramMode,
       setStatus: dependencies.setStatus,
     }),
   );
 
   ipcMain.on('dictation:status', (_event, status: AppStatus) => {
     dependencies.setStatus(status);
+  });
+
+  ipcMain.handle('mindmap:openPreview', async (_event, request: MindmapPreviewRequest) => {
+    await dependencies.openMindmapPreview(request);
+  });
+
+  ipcMain.handle('mindmap:getPreview', async (): Promise<MindmapPreviewRequest | null> =>
+    dependencies.getMindmapPreview(),
+  );
+
+  ipcMain.handle('mindmap:copyPng', async (_event, request: MindmapPngRequest): Promise<CopyMindmapPngResult> => {
+    const image = readMindmapPng(request.dataUrl);
+    clipboard.writeImage(image);
+    dependencies.closeMindmapPreview();
+    return { copied: true };
+  });
+
+  ipcMain.handle('mindmap:savePng', async (_event, request: MindmapPngRequest): Promise<SaveMindmapPngResult> => {
+    const image = readMindmapPng(request.dataUrl);
+    const result = await dialog.showSaveDialog({
+      title: 'Save mindmap PNG',
+      defaultPath: `${sanitizeFilename(request.title || 'mindmap')}.png`,
+      filters: [{ name: 'PNG Image', extensions: ['png'] }],
+    });
+    if (result.canceled || !result.filePath) return { saved: false };
+
+    await writeFile(result.filePath, image.toPNG());
+    return { saved: true, filePath: result.filePath };
+  });
+
+  ipcMain.handle('mindmap:cancel', () => {
+    dependencies.closeMindmapPreview();
   });
 
   ipcMain.handle('system:showMainWindow', () => {
@@ -202,4 +245,24 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     'openrouter:listTextModels',
     async (): Promise<OpenRouterModelInfo[]> => listCuratedTextModels(),
   );
+}
+
+function readMindmapPng(dataUrl: string) {
+  if (!dataUrl.startsWith('data:image/png;base64,')) {
+    throw new Error('Mindmap export must be a PNG data URL.');
+  }
+
+  const image = nativeImage.createFromDataURL(dataUrl);
+  if (image.isEmpty()) {
+    throw new Error('OpenWhisp could not read the exported mindmap image.');
+  }
+  return image;
+}
+
+function sanitizeFilename(value: string): string {
+  return value
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80) || 'mindmap';
 }

@@ -4,8 +4,8 @@ import { BrowserWindow, screen } from 'electron';
 
 const preloadPath = fileURLToPath(new URL('../preload/index.cjs', import.meta.url));
 const rendererFilePath = fileURLToPath(new URL('../renderer/index.html', import.meta.url));
-const overlayWidth = 320;
-const overlayHeight = 68;
+const overlayWidth = 460;
+const overlayHeight = 156;
 
 function getRendererEntry(hash = ''): string {
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
@@ -94,5 +94,30 @@ export async function createOverlayWindow(): Promise<BrowserWindow> {
 
   await loadRendererWindow(window, 'overlay');
 
+  return window;
+}
+
+export async function createMindmapWindow(): Promise<BrowserWindow> {
+  const window = new BrowserWindow({
+    width: 1180,
+    height: 820,
+    minWidth: 900,
+    minHeight: 640,
+    show: false,
+    backgroundColor: '#f5f5ef',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: {
+      x: 18,
+      y: 18,
+    },
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      backgroundThrottling: false,
+      spellcheck: false,
+    },
+  });
+
+  await loadRendererWindow(window, 'mindmap');
   return window;
 }

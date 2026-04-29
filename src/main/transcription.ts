@@ -8,6 +8,10 @@ type Transcriber = (
   options?: Record<string, unknown>,
 ) => Promise<{ text?: string }>;
 
+const MIN_SPEECH_DURATION_SECONDS = 0.45;
+const SILENCE_RMS_THRESHOLD = 0.0035;
+const SILENCE_PEAK_THRESHOLD = 0.035;
+
 let transcriberKey: string | null = null;
 let transcriberPromise: Promise<Transcriber> | null = null;
 
@@ -99,6 +103,23 @@ function decodePcm16Wave(buffer: Buffer): Float32Array {
   return audio;
 }
 
+function hasEnoughAudioEnergy(audio: Float32Array, sampleRate: number): boolean {
+  if (audio.length / sampleRate < MIN_SPEECH_DURATION_SECONDS) {
+    return false;
+  }
+
+  let sumSquares = 0;
+  let peak = 0;
+  for (const sample of audio) {
+    const abs = Math.abs(sample);
+    sumSquares += sample * sample;
+    if (abs > peak) peak = abs;
+  }
+
+  const rms = Math.sqrt(sumSquares / Math.max(1, audio.length));
+  return rms >= SILENCE_RMS_THRESHOLD || peak >= SILENCE_PEAK_THRESHOLD;
+}
+
 export async function transcribeRecording(
   wavBase64: string,
   settings: AppSettings,
@@ -106,6 +127,10 @@ export async function transcribeRecording(
 ): Promise<string> {
   const transcriber = await getTranscriber(settings, paths);
   const audio = decodePcm16Wave(Buffer.from(wavBase64, 'base64'));
+  if (!hasEnoughAudioEnergy(audio, 16_000)) {
+    return '';
+  }
+
   const result = await transcriber(audio, {
     return_timestamps: false,
     chunk_length_s: 20,
