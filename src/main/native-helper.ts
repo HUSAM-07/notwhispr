@@ -151,14 +151,25 @@ export async function startFnListener(
     }
 
     try {
-      const message = JSON.parse(line) as { type?: string; message?: string };
+      const message = JSON.parse(line) as {
+        type?: string;
+        message?: string;
+        terminalCommandMode?: boolean;
+      };
 
       if (message.type === 'fnDown') {
-        onEvent({ type: 'down' });
+        onEvent({ type: 'down', terminalCommandMode: Boolean(message.terminalCommandMode) });
       }
 
       if (message.type === 'fnUp') {
-        onEvent({ type: 'up' });
+        onEvent({ type: 'up', terminalCommandMode: Boolean(message.terminalCommandMode) });
+      }
+
+      if (message.type === 'modifierChanged') {
+        onEvent({
+          type: 'modifierChanged',
+          terminalCommandMode: Boolean(message.terminalCommandMode),
+        });
       }
 
       if (message.type === 'error') {

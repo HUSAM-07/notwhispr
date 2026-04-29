@@ -39,6 +39,7 @@ export interface AppSettings {
   styleMode: StyleMode;
   enhancementLevel: EnhancementLevel;
   autoPaste: boolean;
+  terminalCommandMode: boolean;
   showOverlay: boolean;
   launchAtLogin: boolean;
   setupComplete: boolean;
@@ -122,10 +123,12 @@ export interface ProcessAudioResult {
 export interface DictationRequest {
   wavBase64: string;
   targetFocus?: FocusInfo;
+  forceTerminalCommandMode?: boolean;
 }
 
 export interface HotkeyEvent {
-  type: 'down' | 'up';
+  type: 'down' | 'up' | 'modifierChanged';
+  terminalCommandMode?: boolean;
 }
 
 export interface UpdateSettingsInput {
@@ -138,6 +141,7 @@ export interface UpdateSettingsInput {
   ollamaBaseUrl?: string;
   storageDirectory?: string;
   autoPaste?: boolean;
+  terminalCommandMode?: boolean;
   showOverlay?: boolean;
   launchAtLogin?: boolean;
   setupComplete?: boolean;

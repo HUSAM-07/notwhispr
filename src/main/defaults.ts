@@ -37,8 +37,9 @@ export function createDefaultSettings(): AppSettings {
     styleMode: 'conversation',
     enhancementLevel: 'medium',
     autoPaste: true,
+    terminalCommandMode: true,
     showOverlay: false,
-    launchAtLogin: false,
+    launchAtLogin: true,
     setupComplete: false,
     imageAgent: {
       enabled: false,

@@ -310,6 +310,29 @@ export async function rewriteWithOpenRouter(
   ]);
 }
 
+export async function commandWithOpenRouter(
+  apiKey: string,
+  modelId: string,
+  systemPrompt: string,
+  rawText: string,
+): Promise<string> {
+  return chatCompletion(apiKey, modelId, [
+    { role: 'system', content: systemPrompt },
+    {
+      role: 'user',
+      content: [
+        'Convert the dictated terminal intent below into exactly one shell command.',
+        'Use only the final intent if the speaker corrected themselves.',
+        'Reply with only the command. Do not add explanation, markdown, labels, quotes, or prompt markers.',
+        '',
+        '<dictation>',
+        rawText,
+        '</dictation>',
+      ].join('\n'),
+    },
+  ]);
+}
+
 export async function classifyWithOpenRouter(
   apiKey: string,
   modelId: string,

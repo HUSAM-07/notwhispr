@@ -10,6 +10,7 @@ import type {
   BootstrapState,
   EnhancementLevel,
   FocusInfo,
+  HotkeyEvent,
   OpenRouterModelInfo,
   StyleMode,
 } from '../shared/types';
@@ -108,6 +109,7 @@ export function App() {
   const processingRef = useRef(false);
   const bootstrapRef = useRef<BootstrapState | null>(null);
   const targetFocusRef = useRef<FocusInfo | null>(null);
+  const forceTerminalCommandModeRef = useRef(false);
 
   useEffect(() => { bootstrapRef.current = bootstrap; }, [bootstrap]);
 
@@ -123,7 +125,8 @@ export function App() {
     const stopStatus = window.openWhisp.onStatus((s) => { if (mounted) setStatus(s); });
     const stopHotkey = OVERLAY_VIEW
       ? window.openWhisp.onHotkey((e) => {
-          if (e.type === 'down') void handleHotkeyDown();
+          if (e.type === 'down') void handleHotkeyDown(e);
+          if (e.type === 'modifierChanged') handleHotkeyModifierChanged(e);
           if (e.type === 'up') void handleHotkeyUp();
         })
       : () => undefined;
@@ -170,9 +173,10 @@ export function App() {
     }
   };
 
-  const handleHotkeyDown = async () => {
+  const handleHotkeyDown = async (event: HotkeyEvent) => {
     const current = await refreshBootstrap();
     if (recordingRef.current || processingRef.current) return;
+    forceTerminalCommandModeRef.current = Boolean(event.terminalCommandMode);
 
     if (current.permissions.microphone !== 'granted') {
       pushStatus({ phase: 'error', title: 'Microphone needed', detail: 'Grant microphone access in setup.' });
@@ -202,11 +206,29 @@ export function App() {
       targetFocusRef.current = await window.openWhisp.captureFocusTarget();
       recordingRef.current = true;
       await recorderRef.current?.start();
-      pushStatus({ phase: 'listening', title: 'Listening', detail: 'Speak while holding Fn.' });
+      pushStatus({
+        phase: 'listening',
+        title: forceTerminalCommandModeRef.current ? 'Listening for command' : 'Listening',
+        detail: forceTerminalCommandModeRef.current
+          ? 'Speak a terminal command while holding Fn + Command.'
+          : 'Speak while holding Fn.',
+      });
     } catch (error) {
       recordingRef.current = false;
       pushStatus({ phase: 'error', title: 'Microphone error', detail: error instanceof Error ? error.message : 'Microphone could not start.' });
     }
+  };
+
+  const handleHotkeyModifierChanged = (event: HotkeyEvent) => {
+    if (!recordingRef.current || processingRef.current) return;
+    if (!event.terminalCommandMode) return;
+
+    forceTerminalCommandModeRef.current = true;
+    pushStatus({
+      phase: 'listening',
+      title: 'Listening for command',
+      detail: 'Speak a terminal command while holding Fn + Command.',
+    });
   };
 
   const handleHotkeyUp = async () => {
@@ -216,7 +238,11 @@ export function App() {
     try {
       const wavBase64 = await recorderRef.current?.stop();
       if (!wavBase64) throw new Error('No recording was captured.');
-      const result = await window.openWhisp.processAudio({ wavBase64, targetFocus: targetFocusRef.current ?? undefined });
+      const result = await window.openWhisp.processAudio({
+        wavBase64,
+        targetFocus: targetFocusRef.current ?? undefined,
+        forceTerminalCommandMode: forceTerminalCommandModeRef.current,
+      });
       pushStatus({
         phase: 'done',
         title: result.pasted ? 'Pasted' : 'Copied',
@@ -228,6 +254,7 @@ export function App() {
       pushStatus({ phase: 'error', title: 'Dictation failed', detail: error instanceof Error ? error.message : 'Could not finish dictation.' });
     } finally {
       targetFocusRef.current = null;
+      forceTerminalCommandModeRef.current = false;
       processingRef.current = false;
     }
   };
@@ -983,6 +1010,7 @@ function PreferencesPage({ bootstrap, onAction }: { bootstrap: BootstrapState; o
       <div className="card">
         <div className="card-head"><h3>Behavior</h3></div>
         <ToggleRow title="Auto-paste" description="Paste into the active app after rewriting" checked={bootstrap.settings.autoPaste} onChange={(v) => void onAction('settings', () => window.openWhisp.updateSettings({ autoPaste: v }))} />
+        <ToggleRow title="Terminal command mode" description="When a terminal app is focused, turn speech into one shell command and paste it without running it" checked={bootstrap.settings.terminalCommandMode} onChange={(v) => void onAction('settings', () => window.openWhisp.updateSettings({ terminalCommandMode: v }))} />
         <ToggleRow title="Show overlay" description="Show the dictation badge on screen" checked={bootstrap.settings.showOverlay} onChange={(v) => void onAction('settings', () => window.openWhisp.updateSettings({ showOverlay: v }))} />
         <ToggleRow title="Launch at login" description="Start Openwhisp when you log in" checked={bootstrap.settings.launchAtLogin} onChange={(v) => void onAction('settings', () => window.openWhisp.updateSettings({ launchAtLogin: v }))} />
       </div>

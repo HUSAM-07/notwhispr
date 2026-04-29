@@ -9,7 +9,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
-    "build:native": "swiftc swift/OpenWhispHelper.swift -o build/native/openwhisp-helper",
+    "build:native": "mkdir -p build/native && swiftc swift/OpenWhispHelper.swift -o build/native/openwhisp-helper",
     "package": "npm run build && npm run build:native && electron-builder"
   },
   "build": {

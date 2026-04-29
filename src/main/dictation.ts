@@ -7,9 +7,9 @@ import type {
   ImageGenerationResult,
   ProcessAudioResult,
 } from '../shared/types';
-import { getEnhancementPrompt } from './prompts';
-import { rewriteWithOllama } from './ollama';
-import { rewriteWithOpenRouter } from './openrouter';
+import { getEnhancementPrompt, getTerminalCommandPrompt } from './prompts';
+import { commandWithOllama, rewriteWithOllama } from './ollama';
+import { commandWithOpenRouter, rewriteWithOpenRouter } from './openrouter';
 import { getFocusInfo, triggerPaste } from './native-helper';
 import { detectImageTrigger, runImageAgent } from './image-agent';
 import { ensureStorage } from './storage';
@@ -18,6 +18,7 @@ interface ProcessDictationOptions {
   wavBase64: string;
   settings: AppSettings;
   targetFocus?: FocusInfo;
+  forceTerminalCommandMode?: boolean;
   setStatus: (status: AppStatus) => void;
 }
 
@@ -29,10 +30,68 @@ function createIdleStatus(): AppStatus {
   };
 }
 
+const TERMINAL_APP_NAMES = new Set([
+  'terminal',
+  'iterm',
+  'iterm2',
+  'warp',
+  'wezterm',
+  'alacritty',
+  'kitty',
+  'ghostty',
+  'hyper',
+  'tabby',
+]);
+
+const TERMINAL_BUNDLE_FRAGMENTS = [
+  'com.apple.terminal',
+  'com.googlecode.iterm2',
+  'dev.warp',
+  'com.github.wez.wezterm',
+  'org.alacritty',
+  'net.kovidgoyal.kitty',
+  'com.mitchellh.ghostty',
+  'co.zeit.hyper',
+  'org.tabby',
+];
+const NO_TERMINAL_COMMAND_SENTINEL = '__NO_COMMAND__';
+
+function isTerminalFocus(focusInfo: FocusInfo | undefined): boolean {
+  const bundleIdentifier = focusInfo?.bundleIdentifier?.toLowerCase() ?? '';
+  const appName = focusInfo?.appName?.trim().toLowerCase() ?? '';
+
+  return (
+    TERMINAL_APP_NAMES.has(appName) ||
+    TERMINAL_BUNDLE_FRAGMENTS.some((fragment) => bundleIdentifier.includes(fragment))
+  );
+}
+
+function sanitizeTerminalCommand(command: string): string {
+  const withoutCodeFence = command
+    .trim()
+    .replace(/^```(?:\w+)?\s*/u, '')
+    .replace(/\s*```$/u, '')
+    .trim();
+
+  const unquoted =
+    (withoutCodeFence.startsWith('"') && withoutCodeFence.endsWith('"')) ||
+    (withoutCodeFence.startsWith("'") && withoutCodeFence.endsWith("'"))
+      ? withoutCodeFence.slice(1, -1).trim()
+      : withoutCodeFence;
+
+  return unquoted
+    .replace(/^\$\s*/u, '')
+    .replace(/[\r\n]+/gu, ' ')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
 export async function processDictationAudio({
   wavBase64,
   settings,
   targetFocus,
+  forceTerminalCommandMode = false,
   setStatus,
 }: ProcessDictationOptions): Promise<ProcessAudioResult> {
   const storage = await ensureStorage(settings);
@@ -54,8 +113,123 @@ export async function processDictationAudio({
     throw new Error('No speech was detected in the recording.');
   }
 
+  const initialFocusInfo = targetFocus ?? (await getFocusInfo().catch(() => undefined));
   const useOpenRouter = settings.textProvider === 'openrouter';
   const activeRewriteModel = useOpenRouter ? settings.openrouterTextModel : settings.textModel;
+  const useTerminalCommandMode =
+    settings.terminalCommandMode && (forceTerminalCommandMode || isTerminalFocus(initialFocusInfo));
+
+  if (useTerminalCommandMode) {
+    setStatus({
+      phase: 'rewriting',
+      title: 'Generating command',
+      detail: `${activeRewriteModel} is turning your speech into a terminal command.`,
+      preview: rawText,
+      rawText,
+    });
+
+    let finalText = '';
+
+    try {
+      const rewrittenCommand = useOpenRouter
+        ? await commandWithOpenRouter(
+            settings.openrouterApiKey,
+            settings.openrouterTextModel,
+            getTerminalCommandPrompt(),
+            rawText,
+          )
+        : await commandWithOllama(
+            settings.ollamaBaseUrl,
+            settings.textModel,
+            getTerminalCommandPrompt(),
+            rawText,
+          );
+
+      finalText = sanitizeTerminalCommand(rewrittenCommand);
+      if (finalText === NO_TERMINAL_COMMAND_SENTINEL) {
+        setStatus({
+          phase: 'done',
+          title: 'No command',
+          detail: 'OpenWhisp did not detect a terminal command, so nothing was pasted.',
+          preview: rawText,
+          rawText,
+        });
+
+        setTimeout(() => {
+          setStatus(createIdleStatus());
+        }, 1_500);
+
+        return {
+          rawText,
+          finalText: '',
+          pasted: false,
+          focusInfo: initialFocusInfo,
+        };
+      }
+
+      if (!finalText) {
+        throw new Error('The command model returned an empty command.');
+      }
+    } catch (error) {
+      setStatus({
+        phase: 'error',
+        title: 'Command unavailable',
+        detail:
+          error instanceof Error
+            ? `${error.message} Nothing was pasted into the terminal.`
+            : 'OpenWhisp could not generate a command, so nothing was pasted into the terminal.',
+        preview: rawText,
+        rawText,
+      });
+
+      setTimeout(() => {
+        setStatus(createIdleStatus());
+      }, 1_500);
+
+      return {
+        rawText,
+        finalText: '',
+        pasted: false,
+        focusInfo: initialFocusInfo,
+      };
+    }
+
+    clipboard.writeText(finalText);
+
+    let pasted = false;
+    if (settings.autoPaste) {
+      setStatus({
+        phase: 'pasting',
+        title: 'Pasting command',
+        detail: 'Sending the command to the terminal without pressing Enter.',
+        preview: finalText,
+        rawText,
+      });
+
+      pasted = await triggerPaste(initialFocusInfo).catch(() => false);
+    }
+
+    setStatus({
+      phase: 'done',
+      title: pasted ? 'Command pasted' : 'Command copied',
+      detail: pasted
+        ? 'Review the command in your terminal, then press Enter when you are ready.'
+        : 'The command is on the clipboard. Paste it into your terminal when you are ready.',
+      preview: finalText,
+      rawText,
+    });
+
+    setTimeout(() => {
+      setStatus(createIdleStatus());
+    }, 1_500);
+
+    return {
+      rawText,
+      finalText,
+      pasted,
+      focusInfo: initialFocusInfo,
+    };
+  }
 
   setStatus({
     phase: 'rewriting',
@@ -141,7 +315,7 @@ export async function processDictationAudio({
   clipboard.writeText(finalText);
 
   let pasted = false;
-  let focusInfo = targetFocus;
+  const focusInfo = initialFocusInfo;
 
   if (settings.autoPaste) {
     setStatus({
@@ -152,7 +326,6 @@ export async function processDictationAudio({
       rawText,
     });
 
-    focusInfo = targetFocus ?? (await getFocusInfo().catch(() => undefined));
     pasted = await triggerPaste(focusInfo).catch(() => false);
   }
 

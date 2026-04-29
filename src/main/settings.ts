@@ -17,15 +17,20 @@ export async function loadSettings(): Promise<AppSettings> {
 
   try {
     const raw = await readFile(settingsPath, 'utf8');
-    const persisted = JSON.parse(raw) as Partial<AppSettings>;
+    const persisted = JSON.parse(raw) as Partial<AppSettings> & {
+      warpCommandMode?: boolean;
+    };
 
     const migratedKey =
       persisted.openrouterApiKey || persisted.imageAgent?.openrouterApiKey || '';
+    const terminalCommandMode =
+      persisted.terminalCommandMode ?? persisted.warpCommandMode ?? defaults.terminalCommandMode;
 
     return {
       ...defaults,
       ...persisted,
       openrouterApiKey: migratedKey,
+      terminalCommandMode,
       imageAgent: {
         ...defaults.imageAgent,
         ...(persisted.imageAgent ?? {}),

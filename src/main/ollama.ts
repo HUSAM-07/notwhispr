@@ -199,6 +199,41 @@ export async function rewriteWithOllama(
   systemPrompt: string,
   rawText: string,
 ): Promise<string> {
+  return chatWithOllama(baseUrl, modelName, systemPrompt, [
+    'Rewrite the dictated text below.',
+    'If the speaker corrected themselves or changed their mind, use only their final intent.',
+    'Reply with only the final rewritten text — no preface, explanation, labels, or quotation marks.',
+    '',
+    '<dictation>',
+    rawText,
+    '</dictation>',
+  ].join('\n'), rawText);
+}
+
+export async function commandWithOllama(
+  baseUrl: string,
+  modelName: string,
+  systemPrompt: string,
+  rawText: string,
+): Promise<string> {
+  return chatWithOllama(baseUrl, modelName, systemPrompt, [
+    'Convert the dictated terminal intent below into exactly one shell command.',
+    'Use only the final intent if the speaker corrected themselves.',
+    'Reply with only the command. Do not add explanation, markdown, labels, quotes, or prompt markers.',
+    '',
+    '<dictation>',
+    rawText,
+    '</dictation>',
+  ].join('\n'), rawText);
+}
+
+async function chatWithOllama(
+  baseUrl: string,
+  modelName: string,
+  systemPrompt: string,
+  userPrompt: string,
+  fallbackText: string,
+): Promise<string> {
   try {
     const response = await fetchWithTimeout(
       buildUrl(baseUrl, '/api/chat'),
@@ -221,15 +256,7 @@ export async function rewriteWithOllama(
             },
             {
               role: 'user',
-              content: [
-                'Rewrite the dictated text below.',
-                'If the speaker corrected themselves or changed their mind, use only their final intent.',
-                'Reply with only the final rewritten text — no preface, explanation, labels, or quotation marks.',
-                '',
-                '<dictation>',
-                rawText,
-                '</dictation>',
-              ].join('\n'),
+              content: userPrompt,
             },
           ],
         }),
@@ -247,7 +274,7 @@ export async function rewriteWithOllama(
       };
     };
 
-    return cleanRewriteOutput(payload.message?.content, rawText);
+    return cleanRewriteOutput(payload.message?.content, fallbackText);
   } catch (error) {
     throw toOllamaError(baseUrl, error, OLLAMA_CHAT_TIMEOUT_MS);
   }

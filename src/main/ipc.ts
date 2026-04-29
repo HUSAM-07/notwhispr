@@ -160,6 +160,7 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
       wavBase64: request.wavBase64,
       settings: dependencies.getSettings(),
       targetFocus: request.targetFocus,
+      forceTerminalCommandMode: request.forceTerminalCommandMode,
       setStatus: dependencies.setStatus,
     }),
   );

@@ -24,9 +24,11 @@ struct OkState: Codable {
 struct EventMessage: Codable {
     let type: String
     let message: String?
+    let terminalCommandMode: Bool?
 }
 
 private var fnIsDown = false
+private var terminalCommandModeIsDown = false
 
 func emitJSON<T: Encodable>(_ value: T) {
     let encoder = JSONEncoder()
@@ -208,15 +210,24 @@ private func flagsChangedCallback(
         return Unmanaged.passUnretained(event)
     }
 
-    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-    guard keyCode == 63 else {
-        return Unmanaged.passUnretained(event)
-    }
+    let fnIsCurrentlyDown = event.flags.contains(.maskSecondaryFn)
+    let terminalCommandModeIsCurrentlyDown = event.flags.contains(.maskCommand)
 
-    let isDown = event.flags.contains(.maskSecondaryFn)
-    if isDown != fnIsDown {
-        fnIsDown = isDown
-        emitJSON(EventMessage(type: isDown ? "fnDown" : "fnUp", message: nil))
+    if fnIsCurrentlyDown != fnIsDown {
+        fnIsDown = fnIsCurrentlyDown
+        terminalCommandModeIsDown = terminalCommandModeIsCurrentlyDown
+        emitJSON(EventMessage(
+            type: fnIsCurrentlyDown ? "fnDown" : "fnUp",
+            message: nil,
+            terminalCommandMode: terminalCommandModeIsCurrentlyDown
+        ))
+    } else if fnIsDown && terminalCommandModeIsCurrentlyDown != terminalCommandModeIsDown {
+        terminalCommandModeIsDown = terminalCommandModeIsCurrentlyDown
+        emitJSON(EventMessage(
+            type: "modifierChanged",
+            message: nil,
+            terminalCommandMode: terminalCommandModeIsCurrentlyDown
+        ))
     }
 
     return Unmanaged.passUnretained(event)
@@ -224,7 +235,7 @@ private func flagsChangedCallback(
 
 func listenForFnKey() -> Int32 {
     guard inputMonitoringGranted() else {
-        emitJSON(EventMessage(type: "error", message: "Input Monitoring is not enabled for OpenWhisp."))
+        emitJSON(EventMessage(type: "error", message: "Input Monitoring is not enabled for OpenWhisp.", terminalCommandMode: nil))
         return 1
     }
 
@@ -237,7 +248,7 @@ func listenForFnKey() -> Int32 {
         callback: flagsChangedCallback,
         userInfo: nil
     ) else {
-        emitJSON(EventMessage(type: "error", message: "OpenWhisp could not create the global Fn listener."))
+        emitJSON(EventMessage(type: "error", message: "OpenWhisp could not create the global Fn listener.", terminalCommandMode: nil))
         return 1
     }
 
@@ -252,7 +263,7 @@ func listenForFnKey() -> Int32 {
 let arguments = CommandLine.arguments
 
 guard arguments.count >= 2 else {
-    emitJSON(EventMessage(type: "error", message: "No helper command was provided."))
+    emitJSON(EventMessage(type: "error", message: "No helper command was provided.", terminalCommandMode: nil))
     exit(1)
 }
 
@@ -272,6 +283,6 @@ case "paste":
 case "listen":
     exit(listenForFnKey())
 default:
-    emitJSON(EventMessage(type: "error", message: "Unknown helper command."))
+    emitJSON(EventMessage(type: "error", message: "Unknown helper command.", terminalCommandMode: nil))
     exit(1)
 }
