@@ -3,11 +3,15 @@
 import type {
   AppStatus,
   BootstrapState,
+  CopyMindmapPngResult,
   DictationRequest,
   FocusInfo,
   HotkeyEvent,
   ImageGenerationResult,
+  MindmapPngRequest,
+  MindmapPreviewRequest,
   OpenRouterModelInfo,
+  SaveMindmapPngResult,
   UpdateSettingsInput,
 } from '../shared/types';
 
@@ -28,7 +32,15 @@ declare global {
         finalText: string;
         pasted: boolean;
         image?: ImageGenerationResult;
+        diagramDraft?: MindmapPreviewRequest['draft'];
+        mindmapDraft?: MindmapPreviewRequest['draft'];
       }>;
+      openMindmapPreview: (request: MindmapPreviewRequest) => Promise<void>;
+      getMindmapPreview: () => Promise<MindmapPreviewRequest | null>;
+      copyMindmapPng: (request: MindmapPngRequest) => Promise<CopyMindmapPngResult>;
+      saveMindmapPng: (request: MindmapPngRequest) => Promise<SaveMindmapPngResult>;
+      cancelMindmapPreview: () => Promise<void>;
+      onMindmapPreview: (listener: (request: MindmapPreviewRequest | null) => void) => () => void;
       listImageModels: (apiKey: string) => Promise<OpenRouterModelInfo[]>;
       verifyImageApiKey: (apiKey: string) => Promise<boolean>;
       listOpenRouterTextModels: () => Promise<OpenRouterModelInfo[]>;

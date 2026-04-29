@@ -45,6 +45,7 @@
     }
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
     "@hugeicons/core-free-icons": "^4.1.1",
     "@hugeicons/react": "^1.1.6",
     "@huggingface/transformers": "^4.0.1",

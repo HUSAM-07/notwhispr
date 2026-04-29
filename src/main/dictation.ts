@@ -12,6 +12,7 @@ import { commandWithOllama, rewriteWithOllama } from './ollama';
 import { commandWithOpenRouter, rewriteWithOpenRouter } from './openrouter';
 import { getFocusInfo, triggerPaste } from './native-helper';
 import { detectImageTrigger, runImageAgent } from './image-agent';
+import { generateDiagramDraft } from './diagram-agent';
 import { ensureStorage } from './storage';
 
 interface ProcessDictationOptions {
@@ -19,6 +20,8 @@ interface ProcessDictationOptions {
   settings: AppSettings;
   targetFocus?: FocusInfo;
   forceTerminalCommandMode?: boolean;
+  disableTerminalCommandMode?: boolean;
+  forceDiagramMode?: boolean;
   setStatus: (status: AppStatus) => void;
 }
 
@@ -26,7 +29,7 @@ function createIdleStatus(): AppStatus {
   return {
     phase: 'idle',
     title: 'Ready',
-    detail: 'Hold Fn to dictate. Release Fn to paste.',
+    detail: 'Hold Option to dictate. Release Option to paste.',
   };
 }
 
@@ -55,6 +58,15 @@ const TERMINAL_BUNDLE_FRAGMENTS = [
   'org.tabby',
 ];
 const NO_TERMINAL_COMMAND_SENTINEL = '__NO_COMMAND__';
+const NO_SPEECH_HALLUCINATIONS = new Set([
+  'you',
+  'thank you',
+  'thanks',
+  'thank you for watching',
+  'thanks for watching',
+  'bye',
+  'goodbye',
+]);
 
 function isTerminalFocus(focusInfo: FocusInfo | undefined): boolean {
   const bundleIdentifier = focusInfo?.bundleIdentifier?.toLowerCase() ?? '';
@@ -87,11 +99,23 @@ function sanitizeTerminalCommand(command: string): string {
     .trim();
 }
 
+function isNoSpeechText(text: string): boolean {
+  const normalized = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+  return !normalized || NO_SPEECH_HALLUCINATIONS.has(normalized);
+}
+
 export async function processDictationAudio({
   wavBase64,
   settings,
   targetFocus,
   forceTerminalCommandMode = false,
+  disableTerminalCommandMode = false,
+  forceDiagramMode = false,
   setStatus,
 }: ProcessDictationOptions): Promise<ProcessAudioResult> {
   const storage = await ensureStorage(settings);
@@ -104,20 +128,31 @@ export async function processDictationAudio({
 
   const { transcribeRecording } = await import('./transcription');
   const rawText = await transcribeRecording(wavBase64, settings, storage);
-  if (!rawText) {
+  if (isNoSpeechText(rawText)) {
     setStatus({
-      phase: 'error',
+      phase: 'done',
       title: 'Nothing heard',
-      detail: 'OpenWhisp did not detect enough speech to transcribe.',
+      detail: 'No speech was detected, so nothing was transcribed.',
     });
-    throw new Error('No speech was detected in the recording.');
+    setTimeout(() => {
+      setStatus(createIdleStatus());
+    }, 1_000);
+
+    return {
+      rawText: '',
+      finalText: '',
+      pasted: false,
+    };
   }
 
   const initialFocusInfo = targetFocus ?? (await getFocusInfo().catch(() => undefined));
   const useOpenRouter = settings.textProvider === 'openrouter';
   const activeRewriteModel = useOpenRouter ? settings.openrouterTextModel : settings.textModel;
   const useTerminalCommandMode =
-    settings.terminalCommandMode && (forceTerminalCommandMode || isTerminalFocus(initialFocusInfo));
+    settings.terminalCommandMode &&
+    !forceDiagramMode &&
+    !disableTerminalCommandMode &&
+    (forceTerminalCommandMode || isTerminalFocus(initialFocusInfo));
 
   if (useTerminalCommandMode) {
     setStatus({
@@ -229,6 +264,62 @@ export async function processDictationAudio({
       pasted,
       focusInfo: initialFocusInfo,
     };
+  }
+
+  if (forceDiagramMode) {
+    setStatus({
+      phase: 'rewriting',
+      title: 'Building diagram',
+      detail: `${activeRewriteModel} is mapping your idea into an editable diagram.`,
+      preview: rawText,
+      rawText,
+    });
+
+    try {
+      const diagramDraft = await generateDiagramDraft(settings, rawText);
+      setStatus({
+        phase: 'done',
+        title: 'Diagram ready',
+        detail: 'Review and edit the diagram before copying or saving it as a PNG.',
+        preview: diagramDraft.title,
+        rawText,
+      });
+
+      setTimeout(() => {
+        setStatus(createIdleStatus());
+      }, 1_500);
+
+      return {
+        rawText,
+        finalText: '',
+        pasted: false,
+        focusInfo: initialFocusInfo,
+        diagramDraft,
+        mindmapDraft: diagramDraft,
+      };
+    } catch (error) {
+      setStatus({
+        phase: 'error',
+        title: 'Diagram unavailable',
+        detail:
+          error instanceof Error
+            ? `${error.message} Nothing was pasted.`
+            : 'OpenWhisp could not create the diagram, so nothing was pasted.',
+        preview: rawText,
+        rawText,
+      });
+
+      setTimeout(() => {
+        setStatus(createIdleStatus());
+      }, 1_500);
+
+      return {
+        rawText,
+        finalText: '',
+        pasted: false,
+        focusInfo: initialFocusInfo,
+      };
+    }
   }
 
   setStatus({

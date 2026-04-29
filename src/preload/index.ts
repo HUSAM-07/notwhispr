@@ -3,11 +3,15 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppStatus,
   BootstrapState,
+  CopyMindmapPngResult,
   DictationRequest,
   FocusInfo,
   HotkeyEvent,
   ImageGenerationResult,
+  MindmapPngRequest,
+  MindmapPreviewRequest,
   OpenRouterModelInfo,
+  SaveMindmapPngResult,
   UpdateSettingsInput,
 } from '../shared/types';
 
@@ -33,6 +37,8 @@ const api = {
       finalText: string;
       pasted: boolean;
       image?: ImageGenerationResult;
+      diagramDraft?: MindmapPreviewRequest['draft'];
+      mindmapDraft?: MindmapPreviewRequest['draft'];
     }>,
   listImageModels: (apiKey: string) =>
     ipcRenderer.invoke('imageAgent:listModels', apiKey) as Promise<OpenRouterModelInfo[]>,
@@ -41,6 +47,21 @@ const api = {
   listOpenRouterTextModels: () =>
     ipcRenderer.invoke('openrouter:listTextModels') as Promise<OpenRouterModelInfo[]>,
   pushStatus: (status: AppStatus) => ipcRenderer.send('dictation:status', status),
+  openMindmapPreview: (request: MindmapPreviewRequest) =>
+    ipcRenderer.invoke('mindmap:openPreview', request) as Promise<void>,
+  getMindmapPreview: () =>
+    ipcRenderer.invoke('mindmap:getPreview') as Promise<MindmapPreviewRequest | null>,
+  copyMindmapPng: (request: MindmapPngRequest) =>
+    ipcRenderer.invoke('mindmap:copyPng', request) as Promise<CopyMindmapPngResult>,
+  saveMindmapPng: (request: MindmapPngRequest) =>
+    ipcRenderer.invoke('mindmap:savePng', request) as Promise<SaveMindmapPngResult>,
+  cancelMindmapPreview: () => ipcRenderer.invoke('mindmap:cancel') as Promise<void>,
+  onMindmapPreview: (listener: (request: MindmapPreviewRequest | null) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, request: MindmapPreviewRequest | null) =>
+      listener(request);
+    ipcRenderer.on('mindmap:previewUpdated', wrapped);
+    return () => ipcRenderer.removeListener('mindmap:previewUpdated', wrapped);
+  },
   showMainWindow: () => ipcRenderer.invoke('system:showMainWindow'),
   hideMainWindow: () => ipcRenderer.invoke('system:hideMainWindow'),
   openExternal: (targetUrl: string) => ipcRenderer.invoke('system:openExternal', targetUrl),

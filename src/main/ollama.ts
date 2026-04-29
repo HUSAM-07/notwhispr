@@ -227,6 +227,15 @@ export async function commandWithOllama(
   ].join('\n'), rawText);
 }
 
+export async function jsonWithOllama(
+  baseUrl: string,
+  modelName: string,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<string> {
+  return chatWithOllama(baseUrl, modelName, systemPrompt, userPrompt, '{}');
+}
+
 async function chatWithOllama(
   baseUrl: string,
   modelName: string,

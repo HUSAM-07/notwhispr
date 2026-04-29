@@ -25,10 +25,13 @@ struct EventMessage: Codable {
     let type: String
     let message: String?
     let terminalCommandMode: Bool?
+    let diagramMode: Bool?
 }
 
-private var fnIsDown = false
+private var optionIsDown = false
 private var terminalCommandModeIsDown = false
+private var diagramModeIsDown = false
+private let leftOptionKeyCode: Int64 = 58
 
 func emitJSON<T: Encodable>(_ value: T) {
     let encoder = JSONEncoder()
@@ -210,23 +213,33 @@ private func flagsChangedCallback(
         return Unmanaged.passUnretained(event)
     }
 
-    let fnIsCurrentlyDown = event.flags.contains(.maskSecondaryFn)
-    let terminalCommandModeIsCurrentlyDown = event.flags.contains(.maskCommand)
+    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+    let isLeftOptionEvent = keyCode == leftOptionKeyCode
+    let optionIsCurrentlyDown = isLeftOptionEvent ? event.flags.contains(.maskAlternate) : optionIsDown
+    let terminalCommandModeIsCurrentlyDown = event.flags.contains(.maskControl)
+    let diagramModeIsCurrentlyDown = event.flags.contains(.maskCommand)
 
-    if fnIsCurrentlyDown != fnIsDown {
-        fnIsDown = fnIsCurrentlyDown
+    if isLeftOptionEvent && optionIsCurrentlyDown != optionIsDown {
+        optionIsDown = optionIsCurrentlyDown
         terminalCommandModeIsDown = terminalCommandModeIsCurrentlyDown
+        diagramModeIsDown = diagramModeIsCurrentlyDown
         emitJSON(EventMessage(
-            type: fnIsCurrentlyDown ? "fnDown" : "fnUp",
+            type: optionIsCurrentlyDown ? "fnDown" : "fnUp",
             message: nil,
-            terminalCommandMode: terminalCommandModeIsCurrentlyDown
+            terminalCommandMode: terminalCommandModeIsCurrentlyDown,
+            diagramMode: diagramModeIsCurrentlyDown
         ))
-    } else if fnIsDown && terminalCommandModeIsCurrentlyDown != terminalCommandModeIsDown {
+    } else if optionIsDown && (
+        terminalCommandModeIsCurrentlyDown != terminalCommandModeIsDown ||
+        diagramModeIsCurrentlyDown != diagramModeIsDown
+    ) {
         terminalCommandModeIsDown = terminalCommandModeIsCurrentlyDown
+        diagramModeIsDown = diagramModeIsCurrentlyDown
         emitJSON(EventMessage(
             type: "modifierChanged",
             message: nil,
-            terminalCommandMode: terminalCommandModeIsCurrentlyDown
+            terminalCommandMode: terminalCommandModeIsCurrentlyDown,
+            diagramMode: diagramModeIsCurrentlyDown
         ))
     }
 
@@ -235,7 +248,7 @@ private func flagsChangedCallback(
 
 func listenForFnKey() -> Int32 {
     guard inputMonitoringGranted() else {
-        emitJSON(EventMessage(type: "error", message: "Input Monitoring is not enabled for OpenWhisp.", terminalCommandMode: nil))
+        emitJSON(EventMessage(type: "error", message: "Input Monitoring is not enabled for OpenWhisp.", terminalCommandMode: nil, diagramMode: nil))
         return 1
     }
 
@@ -248,7 +261,7 @@ func listenForFnKey() -> Int32 {
         callback: flagsChangedCallback,
         userInfo: nil
     ) else {
-        emitJSON(EventMessage(type: "error", message: "OpenWhisp could not create the global Fn listener.", terminalCommandMode: nil))
+        emitJSON(EventMessage(type: "error", message: "OpenWhisp could not create the global Option listener.", terminalCommandMode: nil, diagramMode: nil))
         return 1
     }
 
@@ -263,7 +276,7 @@ func listenForFnKey() -> Int32 {
 let arguments = CommandLine.arguments
 
 guard arguments.count >= 2 else {
-    emitJSON(EventMessage(type: "error", message: "No helper command was provided.", terminalCommandMode: nil))
+    emitJSON(EventMessage(type: "error", message: "No helper command was provided.", terminalCommandMode: nil, diagramMode: nil))
     exit(1)
 }
 
@@ -283,6 +296,6 @@ case "paste":
 case "listen":
     exit(listenForFnKey())
 default:
-    emitJSON(EventMessage(type: "error", message: "Unknown helper command.", terminalCommandMode: nil))
+    emitJSON(EventMessage(type: "error", message: "Unknown helper command.", terminalCommandMode: nil, diagramMode: nil))
     exit(1)
 }

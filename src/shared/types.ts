@@ -118,17 +118,96 @@ export interface ProcessAudioResult {
   pasted: boolean;
   focusInfo?: FocusInfo;
   image?: ImageGenerationResult;
+  diagramDraft?: DiagramDraft;
+  mindmapDraft?: MindmapDraft;
 }
 
 export interface DictationRequest {
   wavBase64: string;
   targetFocus?: FocusInfo;
   forceTerminalCommandMode?: boolean;
+  disableTerminalCommandMode?: boolean;
+  forceDiagramMode?: boolean;
+}
+
+export interface DiagramNode {
+  id: string;
+  label: string;
+  detail?: string;
+  role?: string;
+  shape?: 'ellipse' | 'rectangle' | 'rounded_rectangle' | 'diamond' | 'parallelogram' | 'note' | 'text';
+  color?: string;
+  position?: { x: number; y: number; w: number; h: number };
+  subtext?: string;
+  details?: string[];
+  strokeStyle?: 'solid' | 'dashed' | 'dotted';
+  fillStyle?: 'solid' | 'hachure' | 'cross-hatch';
+  group?: string;
+}
+
+export interface DiagramEdge {
+  id?: string;
+  from: string;
+  to: string;
+  label?: string;
+  kind?: string;
+  style?: 'solid' | 'dashed' | 'dotted';
+  arrow?: 'none' | 'end' | 'start' | 'both';
+  color?: string;
+  routing?: 'straight' | 'orthogonal' | 'curved';
+  waypoints?: Array<{ x: number; y: number }>;
+}
+
+export type DiagramLayoutKind =
+  | 'mindmap'
+  | 'cycle'
+  | 'decision'
+  | 'flow'
+  | 'timeline'
+  | 'architecture'
+  | 'hierarchy'
+  | 'comparison';
+
+export interface DiagramDraft {
+  title: string;
+  layout: DiagramLayoutKind;
+  nodes: DiagramNode[];
+  edges: DiagramEdge[];
+  sourceText: string;
+  subtitle?: string;
+  palette?: Record<string, { fill: string; stroke: string; text?: string }>;
+  canvas?: { width?: number; height?: number; grid?: number };
+  fontFamily?: 'Virgil' | 'Helvetica' | 'Cascadia';
+}
+
+export type MindmapNode = DiagramNode;
+export type MindmapEdge = DiagramEdge;
+export type MindmapLayoutKind = DiagramLayoutKind;
+export type MindmapDraft = DiagramDraft;
+
+export interface MindmapPreviewRequest {
+  draft: DiagramDraft;
+  targetFocus?: FocusInfo;
+}
+
+export interface MindmapPngRequest {
+  dataUrl: string;
+  title?: string;
+}
+
+export interface CopyMindmapPngResult {
+  copied: boolean;
+}
+
+export interface SaveMindmapPngResult {
+  saved: boolean;
+  filePath?: string;
 }
 
 export interface HotkeyEvent {
   type: 'down' | 'up' | 'modifierChanged';
   terminalCommandMode?: boolean;
+  diagramMode?: boolean;
 }
 
 export interface UpdateSettingsInput {

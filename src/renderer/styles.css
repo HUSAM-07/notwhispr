@@ -458,6 +458,90 @@ button { cursor: pointer; }
   font-size: 13px;
 }
 .status-image-link:hover { background: #f4f3ee; }
+
+.mindmap-route,
+.mindmap-route body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #f6efe1;
+}
+
+.mindmap-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at top left, rgba(217, 72, 15, 0.13), transparent 32%),
+    linear-gradient(135deg, #fffaf0 0%, #f2eadb 100%);
+}
+
+.mindmap-toolbar {
+  height: 96px;
+  padding: 22px 28px 16px 84px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid rgba(37, 31, 23, 0.12);
+  -webkit-app-region: drag;
+}
+
+.mindmap-eyebrow {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.mindmap-title {
+  margin: 0;
+  max-width: 620px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-1);
+  font-family: ui-serif, Georgia, serif;
+  font-size: 30px;
+  line-height: 1.05;
+}
+
+.mindmap-meta {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.mindmap-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  -webkit-app-region: no-drag;
+}
+
+.mindmap-error {
+  max-width: 360px;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.mindmap-canvas {
+  flex: 1;
+  min-height: 0;
+  margin: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(37, 31, 23, 0.14);
+  border-radius: 24px;
+  background: #fffaf0;
+  box-shadow: 0 24px 80px rgba(31, 27, 19, 0.18);
+}
+
+.mindmap-empty {
+  margin: auto;
+  color: var(--text-2);
+  font-size: 15px;
+}
 .status-image { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; }
 
 .engine-grid {
@@ -688,7 +772,35 @@ button { cursor: pointer; }
    Overlay
    ──────────────────────────────────────────────── */
 
-.overlay-shell { width: 100%; height: 100%; display: grid; place-items: center; background: transparent; }
+.overlay-shell {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 14px;
+  background: transparent;
+}
+.overlay-stack { position: relative; display: flex; justify-content: center; align-items: center; }
+
+.overlay-mode-popover {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(16,16,16,0.96);
+  border: 1px solid rgba(255,255,255,0.16);
+  box-shadow: 0 18px 42px rgba(0,0,0,0.3);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  z-index: 2;
+  animation: overlay-pop 0.16s ease-out;
+}
 
 .overlay-bar {
   display: flex; align-items: center; gap: 10px;
@@ -714,6 +826,49 @@ button { cursor: pointer; }
   color: var(--text-3); white-space: nowrap;
   transition: all 0.15s ease;
 }
+.overlay-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.overlay-stop-btn {
+  appearance: none;
+  border: 0;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(26,26,26,0.92);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 26px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+.overlay-stop-btn:hover { background: rgba(26,26,26,1); }
+.overlay-stop-btn:active { transform: translateY(1px); }
+.overlay-mode-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255,255,255,0.68);
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 26px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.overlay-mode-btn:hover { color: rgba(255,255,255,0.95); background: rgba(255,255,255,0.08); }
+.overlay-mode-btn-active {
+  background: rgba(255,255,255,0.94);
+  border-color: rgba(255,255,255,0.94);
+  color: #171717;
+}
 .overlay-bar-active .overlay-label {
   font-family: "Instrument Serif", Georgia, serif;
   font-size: 15px; font-weight: 400;
@@ -728,6 +883,10 @@ button { cursor: pointer; }
 .grid-cell-on, .overlay-bar-active .grid-cell-on { background: rgba(26,26,26,0.72); }
 .audio-grid-wave .grid-cell { animation: cell-wave 1.6s ease-in-out infinite; }
 @keyframes cell-wave { 0%, 100% { background: rgba(26,26,26,0.06); } 50% { background: rgba(26,26,26,0.5); } }
+@keyframes overlay-pop {
+  from { opacity: 0; transform: translateX(-50%) translateY(5px) scale(0.98); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
 
 /* ────────────────────────────────────────────────
    Animations
