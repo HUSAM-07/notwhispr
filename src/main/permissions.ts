@@ -21,7 +21,6 @@ async function openSettingsPane(targetUrl: string): Promise<void> {
 export async function getPermissionState(): Promise<PermissionsState> {
   const nativePermissions = await getNativePermissionState();
   const microphone = systemPreferences.getMediaAccessStatus('microphone');
-  console.log('[openwhisp] mic status:', microphone, '| native:', JSON.stringify(nativePermissions));
 
   return {
     microphone:

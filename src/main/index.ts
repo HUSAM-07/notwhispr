@@ -35,11 +35,20 @@ function isDisconnectedTerminalWrite(error: unknown): boolean {
     return false;
   }
 
-  const code = (error as NodeJS.ErrnoException).code;
-  return code === 'EIO' || code === 'EPIPE' || code === 'EBADF';
+  const { code, message } = error as NodeJS.ErrnoException;
+  return (
+    code === 'EIO' ||
+    code === 'EPIPE' ||
+    code === 'EBADF' ||
+    message === 'write EIO' ||
+    message === 'write EPIPE' ||
+    message === 'write EBADF'
+  );
 }
 
 function installConsoleWriteGuard(): void {
+  const enableMainConsole = process.env.OPENWHISP_MAIN_LOGS === '1';
+
   process.on('uncaughtException', (error) => {
     if (isDisconnectedTerminalWrite(error)) {
       return;
@@ -59,6 +68,10 @@ function installConsoleWriteGuard(): void {
   for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
     const original = console[method].bind(console);
     console[method] = (...args: unknown[]) => {
+      if (!enableMainConsole) {
+        return;
+      }
+
       try {
         original(...args);
       } catch (error) {
@@ -343,7 +356,7 @@ app.whenReady().then(bootstrap);
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('console-message', (_consoleEvent, level, message) => {
-    if (!app.isPackaged) {
+    if (process.env.OPENWHISP_RENDERER_LOGS === '1') {
       console.log(`[openwhisp:renderer:${level}] ${message}`);
     }
   });
