@@ -30,6 +30,46 @@ let helperReady = false;
 let isQuitting = false;
 let suppressMainWindowUntil = 0;
 
+function isDisconnectedTerminalWrite(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === 'EIO' || code === 'EPIPE' || code === 'EBADF';
+}
+
+function installConsoleWriteGuard(): void {
+  process.on('uncaughtException', (error) => {
+    if (isDisconnectedTerminalWrite(error)) {
+      return;
+    }
+
+    throw error;
+  });
+
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on('error', (error) => {
+      if (!isDisconnectedTerminalWrite(error)) {
+        throw error;
+      }
+    });
+  }
+
+  for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
+    const original = console[method].bind(console);
+    console[method] = (...args: unknown[]) => {
+      try {
+        original(...args);
+      } catch (error) {
+        if (!isDisconnectedTerminalWrite(error)) {
+          throw error;
+        }
+      }
+    };
+  }
+}
+
 function shutdown(): void {
   if (isQuitting) {
     return;
@@ -297,11 +337,15 @@ function createTray(): void {
   tray.on('click', () => showMainWindow());
 }
 
+installConsoleWriteGuard();
+
 app.whenReady().then(bootstrap);
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('console-message', (_consoleEvent, level, message) => {
-    console.log(`[openwhisp:renderer:${level}] ${message}`);
+    if (!app.isPackaged) {
+      console.log(`[openwhisp:renderer:${level}] ${message}`);
+    }
   });
 });
 

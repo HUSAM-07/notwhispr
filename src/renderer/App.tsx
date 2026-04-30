@@ -16,6 +16,7 @@ import type {
   MindmapPreviewRequest,
   OpenRouterModelInfo,
   StyleMode,
+  TextProvider,
 } from '../shared/types';
 import { RECOMMENDED_TEXT_MODEL, RECOMMENDED_WHISPER_LABEL } from '../shared/recommendations';
 
@@ -78,6 +79,16 @@ const OPTION_MULTI_TAP_MS = 340;
 const OPTION_LATCH_TAP_COUNT = 3;
 const FN_TAP_MAX_MS = 260;
 type OverlayDictationModes = { terminal: boolean; diagram: boolean };
+
+function getActiveTextModel(settings: BootstrapState['settings']): string {
+  const model = settings.textProvider === 'openrouter'
+    ? settings.openrouterTextModel
+    : settings.textProvider === 'litellm'
+      ? settings.litellmTextModel
+      : settings.textModel;
+  const displayName = (model || 'Not set').split('/').pop() ?? model;
+  return displayName.split(':')[0] || 'Not set';
+}
 
 const TERMINAL_APP_NAMES = new Set([
   'terminal',
@@ -572,14 +583,16 @@ function EngineStep({ bootstrap, busyAction, onAction, onRefresh, onNext, onBack
   const [checking, setChecking] = useState(false);
   const retry = async () => { setChecking(true); await onRefresh(); setChecking(false); };
 
-  const setProvider = (next: 'ollama' | 'openrouter') => {
+  const setProvider = (next: TextProvider) => {
     if (next === provider) return;
     void onAction('engine', () => window.openWhisp.updateSettings({ textProvider: next }));
   };
 
   const canContinue = provider === 'ollama'
     ? bootstrap.ollamaReachable
-    : Boolean(bootstrap.settings.openrouterApiKey);
+    : provider === 'openrouter'
+      ? Boolean(bootstrap.settings.openrouterApiKey)
+      : Boolean(bootstrap.settings.litellmBaseUrl && bootstrap.settings.litellmApiKey);
 
   return (
     <div className="setup-step">
@@ -602,6 +615,14 @@ function EngineStep({ bootstrap, busyAction, onAction, onRefresh, onNext, onBack
           <strong className="serif">Cloud (OpenRouter)</strong>
           <p>Bring your own API key. No local download. Pennies per dictation.</p>
           {provider === 'openrouter' && <span className="badge badge-ready">Selected</span>}
+        </button>
+        <button
+          className={`engine-card${provider === 'litellm' ? ' engine-card-active' : ''}`}
+          onClick={() => setProvider('litellm')}
+        >
+          <strong className="serif">Cloud (LiteLLM)</strong>
+          <p>Use your LiteLLM proxy URL, key, and any routed model name.</p>
+          {provider === 'litellm' && <span className="badge badge-ready">Selected</span>}
         </button>
       </div>
 
@@ -626,6 +647,10 @@ function EngineStep({ bootstrap, busyAction, onAction, onRefresh, onNext, onBack
 
       {provider === 'openrouter' && (
         <OpenRouterKeyCard bootstrap={bootstrap} busyAction={busyAction} onAction={onAction} />
+      )}
+
+      {provider === 'litellm' && (
+        <LiteLLMConnectionCard bootstrap={bootstrap} busyAction={busyAction} onAction={onAction} />
       )}
 
       <div className="setup-nav">
@@ -673,6 +698,66 @@ function OpenRouterKeyCard({ bootstrap, busyAction, onAction }: {
   );
 }
 
+function LiteLLMConnectionCard({ bootstrap, busyAction, onAction }: {
+  bootstrap: BootstrapState;
+  busyAction: string | null;
+  onAction: (l: string, a: () => Promise<BootstrapState>) => Promise<void>;
+}) {
+  const [baseUrlDraft, setBaseUrlDraft] = useState(bootstrap.settings.litellmBaseUrl);
+  const [keyDraft, setKeyDraft] = useState(bootstrap.settings.litellmApiKey);
+  const [reveal, setReveal] = useState(false);
+
+  useEffect(() => { setBaseUrlDraft(bootstrap.settings.litellmBaseUrl); }, [bootstrap.settings.litellmBaseUrl]);
+  useEffect(() => { setKeyDraft(bootstrap.settings.litellmApiKey); }, [bootstrap.settings.litellmApiKey]);
+
+  const persistBaseUrl = async () => {
+    if (baseUrlDraft === bootstrap.settings.litellmBaseUrl) return;
+    await onAction('litellmBase', () => window.openWhisp.updateSettings({ litellmBaseUrl: baseUrlDraft }));
+  };
+
+  const persistKey = async () => {
+    if (keyDraft === bootstrap.settings.litellmApiKey) return;
+    await onAction('litellmKey', () => window.openWhisp.updateSettings({ litellmApiKey: keyDraft }));
+  };
+
+  return (
+    <div className="s-card">
+      <div className="s-card-info" style={{ marginBottom: 8 }}>
+        <strong>LiteLLM connection</strong>
+        <span>Use an OpenAI-compatible LiteLLM endpoint, usually ending in /v1.</span>
+      </div>
+      <div className="setting-row">
+        <label className="setting-label" htmlFor="setup-litellm-url">API base URL</label>
+        <input
+          id="setup-litellm-url"
+          className="setting-input"
+          placeholder="http://127.0.0.1:4000/v1"
+          value={baseUrlDraft}
+          onChange={(e) => setBaseUrlDraft(e.target.value)}
+          onBlur={() => void persistBaseUrl()}
+          disabled={busyAction === 'litellmBase'}
+        />
+      </div>
+      <div className="setting-row">
+        <label className="setting-label" htmlFor="setup-litellm-key">API key</label>
+        <div className="url-field">
+          <input
+            id="setup-litellm-key"
+            className="setting-input"
+            type={reveal ? 'text' : 'password'}
+            placeholder="sk-..."
+            value={keyDraft}
+            onChange={(e) => setKeyDraft(e.target.value)}
+            onBlur={() => void persistKey()}
+            disabled={busyAction === 'litellmKey'}
+          />
+          <button className="btn btn-link" onClick={() => setReveal((p) => !p)}>{reveal ? 'Hide' : 'Show'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModelsStep({ bootstrap, busyAction, onAction, onNext, onBack }: { bootstrap: BootstrapState; busyAction: string | null; onAction: (l: string, a: () => Promise<BootstrapState>) => Promise<void>; onNext: () => void; onBack: () => void }) {
   const provider = bootstrap.settings.textProvider;
   return (
@@ -689,7 +774,9 @@ function ModelsStep({ bootstrap, busyAction, onAction, onNext, onBack }: { boots
 
       {provider === 'ollama'
         ? <OllamaTextSetup bootstrap={bootstrap} busyAction={busyAction} onAction={onAction} />
-        : <OpenRouterTextSetup bootstrap={bootstrap} onAction={onAction} />}
+        : provider === 'openrouter'
+          ? <OpenRouterTextSetup bootstrap={bootstrap} onAction={onAction} />
+          : <LiteLLMTextSetup bootstrap={bootstrap} onAction={onAction} />}
 
       <div className="setup-nav">
         <button className="btn btn-ghost" onClick={onBack}>Back</button>
@@ -785,6 +872,39 @@ function OpenRouterTextSetup({ bootstrap, onAction }: {
       {activeModel?.description && <p className="s-card-hint">{activeModel.description}</p>}
       {!bootstrap.settings.openrouterApiKey && (
         <p className="s-card-hint">Add your OpenRouter API key in the previous step to enable rewriting.</p>
+      )}
+    </div>
+  );
+}
+
+function LiteLLMTextSetup({ bootstrap, onAction }: {
+  bootstrap: BootstrapState;
+  onAction: (l: string, a: () => Promise<BootstrapState>) => Promise<void>;
+}) {
+  const [modelDraft, setModelDraft] = useState(bootstrap.settings.litellmTextModel);
+  useEffect(() => { setModelDraft(bootstrap.settings.litellmTextModel); }, [bootstrap.settings.litellmTextModel]);
+
+  const persistModel = async () => {
+    if (modelDraft === bootstrap.settings.litellmTextModel) return;
+    await onAction('litellmModel', () => window.openWhisp.updateSettings({ litellmTextModel: modelDraft }));
+  };
+
+  return (
+    <div className="s-card">
+      <div className="s-card-label">Text Enhancement (LiteLLM)</div>
+      <div className="setting-row">
+        <label className="setting-label" htmlFor="setup-litellm-model">Model name</label>
+        <input
+          id="setup-litellm-model"
+          className="setting-input"
+          placeholder="gpt-4o-mini or your LiteLLM alias"
+          value={modelDraft}
+          onChange={(e) => setModelDraft(e.target.value)}
+          onBlur={() => void persistModel()}
+        />
+      </div>
+      {!bootstrap.settings.litellmTextModel && (
+        <p className="s-card-hint">Enter the LiteLLM model name or alias used by your proxy.</p>
       )}
     </div>
   );
@@ -909,7 +1029,7 @@ function HomePage({ status, bootstrap, setPage }: { status: AppStatus; bootstrap
             <span className="stat-label">{level?.label ?? 'Medium'}</span>
           </button>
           <button className="stat-card" onClick={() => setPage('models')}>
-            <span className="stat-value stat-value-sm">{bootstrap.settings.textModel.split(':')[0]}</span>
+            <span className="stat-value stat-value-sm">{getActiveTextModel(bootstrap.settings)}</span>
             <span className="stat-label">Text model</span>
           </button>
           <button className="stat-card" onClick={() => setPage('models')}>
@@ -1044,7 +1164,7 @@ function TextEnhancementCard({ bootstrap, busyAction, onAction }: {
     return () => { cancelled = true; };
   }, [provider]);
 
-  const setProvider = (next: 'ollama' | 'openrouter') => {
+  const setProvider = (next: TextProvider) => {
     if (next === provider) return;
     void onAction('settings', () => window.openWhisp.updateSettings({ textProvider: next }));
   };
@@ -1059,6 +1179,7 @@ function TextEnhancementCard({ bootstrap, busyAction, onAction }: {
       <div className="style-tabs" style={{ marginBottom: 16 }}>
         <button className={`style-tab${provider === 'ollama' ? ' style-tab-active' : ''}`} onClick={() => setProvider('ollama')}>Local (Ollama)</button>
         <button className={`style-tab${provider === 'openrouter' ? ' style-tab-active' : ''}`} onClick={() => setProvider('openrouter')}>Cloud (OpenRouter)</button>
+        <button className={`style-tab${provider === 'litellm' ? ' style-tab-active' : ''}`} onClick={() => setProvider('litellm')}>Cloud (LiteLLM)</button>
       </div>
 
       {provider === 'ollama' ? (
@@ -1077,8 +1198,10 @@ function TextEnhancementCard({ bootstrap, busyAction, onAction }: {
             </button>
           )}
         </>
-      ) : (
+      ) : provider === 'openrouter' ? (
         <OpenRouterTextSection bootstrap={bootstrap} models={orModels} onAction={onAction} />
+      ) : (
+        <LiteLLMTextSection bootstrap={bootstrap} onAction={onAction} />
       )}
     </div>
   );
@@ -1121,6 +1244,78 @@ function OpenRouterTextSection({ bootstrap, models, onAction }: {
         </select>
       </div>
       {activeModel?.description && <p className="s-card-hint">{activeModel.description}</p>}
+    </>
+  );
+}
+
+function LiteLLMTextSection({ bootstrap, onAction }: {
+  bootstrap: BootstrapState;
+  onAction: (l: string, a: () => Promise<BootstrapState>) => Promise<void>;
+}) {
+  const [baseUrlDraft, setBaseUrlDraft] = useState(bootstrap.settings.litellmBaseUrl);
+  const [keyDraft, setKeyDraft] = useState(bootstrap.settings.litellmApiKey);
+  const [modelDraft, setModelDraft] = useState(bootstrap.settings.litellmTextModel);
+  const [reveal, setReveal] = useState(false);
+
+  useEffect(() => { setBaseUrlDraft(bootstrap.settings.litellmBaseUrl); }, [bootstrap.settings.litellmBaseUrl]);
+  useEffect(() => { setKeyDraft(bootstrap.settings.litellmApiKey); }, [bootstrap.settings.litellmApiKey]);
+  useEffect(() => { setModelDraft(bootstrap.settings.litellmTextModel); }, [bootstrap.settings.litellmTextModel]);
+
+  const persistBaseUrl = async () => {
+    if (baseUrlDraft === bootstrap.settings.litellmBaseUrl) return;
+    await onAction('litellmBase', () => window.openWhisp.updateSettings({ litellmBaseUrl: baseUrlDraft }));
+  };
+  const persistKey = async () => {
+    if (keyDraft === bootstrap.settings.litellmApiKey) return;
+    await onAction('litellmKey', () => window.openWhisp.updateSettings({ litellmApiKey: keyDraft }));
+  };
+  const persistModel = async () => {
+    if (modelDraft === bootstrap.settings.litellmTextModel) return;
+    await onAction('litellmModel', () => window.openWhisp.updateSettings({ litellmTextModel: modelDraft }));
+  };
+
+  return (
+    <>
+      <div className="setting-row">
+        <label className="setting-label" htmlFor="litellm-url">API base URL</label>
+        <input
+          id="litellm-url"
+          className="setting-input"
+          placeholder="http://127.0.0.1:4000/v1"
+          value={baseUrlDraft}
+          onChange={(e) => setBaseUrlDraft(e.target.value)}
+          onBlur={() => void persistBaseUrl()}
+        />
+      </div>
+      <div className="setting-row">
+        <label className="setting-label" htmlFor="litellm-key">API key</label>
+        <div className="url-field">
+          <input
+            id="litellm-key"
+            className="setting-input"
+            type={reveal ? 'text' : 'password'}
+            placeholder="sk-..."
+            value={keyDraft}
+            onChange={(e) => setKeyDraft(e.target.value)}
+            onBlur={() => void persistKey()}
+          />
+          <button className="btn btn-link" onClick={() => setReveal((p) => !p)}>{reveal ? 'Hide' : 'Show'}</button>
+        </div>
+      </div>
+      <div className="setting-row">
+        <label className="setting-label" htmlFor="litellm-model">Model name</label>
+        <input
+          id="litellm-model"
+          className="setting-input"
+          placeholder="gpt-4o-mini or your LiteLLM alias"
+          value={modelDraft}
+          onChange={(e) => setModelDraft(e.target.value)}
+          onBlur={() => void persistModel()}
+        />
+      </div>
+      {!bootstrap.textProviderReady && (
+        <p className="s-card-hint">Add the base URL, API key, and model name to enable LiteLLM rewrites, terminal commands, and diagrams.</p>
+      )}
     </>
   );
 }

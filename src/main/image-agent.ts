@@ -5,6 +5,7 @@ import type {
   ImageGenerationResult,
 } from '../shared/types';
 import { classifyWithOpenRouter, generateImage } from './openrouter';
+import { classifyWithLiteLLM } from './litellm';
 import { uploadImageToObjectStore } from './supabase-storage';
 
 const IMAGE_TRIGGER_PATTERNS: RegExp[] = [
@@ -137,7 +138,11 @@ export async function classifyDictationIntent({
   const userPrompt = USER_PROMPT_BUILDER(rawText, rewrittenText);
   const provider = settings.textProvider;
   console.log('[image-agent] classifying via', provider, 'model:',
-    provider === 'openrouter' ? settings.openrouterTextModel : settings.textModel);
+    provider === 'openrouter'
+      ? settings.openrouterTextModel
+      : provider === 'litellm'
+        ? settings.litellmTextModel
+        : settings.textModel);
 
   let raw: string;
   try {
@@ -148,6 +153,14 @@ export async function classifyDictationIntent({
           SYSTEM_PROMPT,
           userPrompt,
         )
+      : provider === 'litellm'
+        ? await classifyWithLiteLLM(
+            settings.litellmBaseUrl,
+            settings.litellmApiKey,
+            settings.litellmTextModel,
+            SYSTEM_PROMPT,
+            userPrompt,
+          )
       : await classifyViaOllama(settings.ollamaBaseUrl, settings.textModel, userPrompt);
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Intent classifier failed.';

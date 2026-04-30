@@ -56,7 +56,9 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     const textProviderReady =
       settings.textProvider === 'openrouter'
         ? Boolean(settings.openrouterApiKey && settings.openrouterTextModel)
-        : ollamaReachable && recommendedModelInstalled;
+        : settings.textProvider === 'litellm'
+          ? Boolean(settings.litellmBaseUrl && settings.litellmApiKey && settings.litellmTextModel)
+          : ollamaReachable && recommendedModelInstalled;
 
     return {
       settings,

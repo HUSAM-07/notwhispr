@@ -10,6 +10,7 @@ import type {
 import { getEnhancementPrompt, getTerminalCommandPrompt } from './prompts';
 import { commandWithOllama, rewriteWithOllama } from './ollama';
 import { commandWithOpenRouter, rewriteWithOpenRouter } from './openrouter';
+import { commandWithLiteLLM, rewriteWithLiteLLM } from './litellm';
 import { getFocusInfo, triggerPaste } from './native-helper';
 import { detectImageTrigger, runImageAgent } from './image-agent';
 import { generateDiagramDraft } from './diagram-agent';
@@ -147,7 +148,12 @@ export async function processDictationAudio({
 
   const initialFocusInfo = targetFocus ?? (await getFocusInfo().catch(() => undefined));
   const useOpenRouter = settings.textProvider === 'openrouter';
-  const activeRewriteModel = useOpenRouter ? settings.openrouterTextModel : settings.textModel;
+  const useLiteLLM = settings.textProvider === 'litellm';
+  const activeRewriteModel = useOpenRouter
+    ? settings.openrouterTextModel
+    : useLiteLLM
+      ? settings.litellmTextModel
+      : settings.textModel;
   const useTerminalCommandMode =
     settings.terminalCommandMode &&
     !forceDiagramMode &&
@@ -173,6 +179,14 @@ export async function processDictationAudio({
             getTerminalCommandPrompt(),
             rawText,
           )
+        : useLiteLLM
+          ? await commandWithLiteLLM(
+              settings.litellmBaseUrl,
+              settings.litellmApiKey,
+              settings.litellmTextModel,
+              getTerminalCommandPrompt(),
+              rawText,
+            )
         : await commandWithOllama(
             settings.ollamaBaseUrl,
             settings.textModel,
@@ -327,6 +341,8 @@ export async function processDictationAudio({
     title: 'Polishing',
     detail: useOpenRouter
       ? `${activeRewriteModel} is polishing your dictation via OpenRouter.`
+      : useLiteLLM
+        ? `${activeRewriteModel} is polishing your dictation via LiteLLM.`
       : `${activeRewriteModel} is applying the selected rewrite level. The first request can take a moment while Ollama warms the model.`,
     preview: rawText,
     rawText,
@@ -343,6 +359,14 @@ export async function processDictationAudio({
           getEnhancementPrompt(settings.styleMode, settings.enhancementLevel),
           rawText,
         )
+      : useLiteLLM
+        ? await rewriteWithLiteLLM(
+            settings.litellmBaseUrl,
+            settings.litellmApiKey,
+            settings.litellmTextModel,
+            getEnhancementPrompt(settings.styleMode, settings.enhancementLevel),
+            rawText,
+          )
       : await rewriteWithOllama(
           settings.ollamaBaseUrl,
           settings.textModel,

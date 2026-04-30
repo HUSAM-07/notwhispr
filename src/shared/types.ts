@@ -11,7 +11,7 @@ export type OverlayPhase =
   | 'done'
   | 'error';
 
-export type TextProvider = 'ollama' | 'openrouter';
+export type TextProvider = 'ollama' | 'openrouter' | 'litellm';
 
 export interface ImageStorageSettings {
   url: string;
@@ -36,6 +36,9 @@ export interface AppSettings {
   textModel: string;
   openrouterApiKey: string;
   openrouterTextModel: string;
+  litellmBaseUrl: string;
+  litellmApiKey: string;
+  litellmTextModel: string;
   styleMode: StyleMode;
   enhancementLevel: EnhancementLevel;
   autoPaste: boolean;
@@ -217,6 +220,9 @@ export interface UpdateSettingsInput {
   textModel?: string;
   openrouterApiKey?: string;
   openrouterTextModel?: string;
+  litellmBaseUrl?: string;
+  litellmApiKey?: string;
+  litellmTextModel?: string;
   ollamaBaseUrl?: string;
   storageDirectory?: string;
   autoPaste?: boolean;

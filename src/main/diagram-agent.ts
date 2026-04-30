@@ -1,6 +1,7 @@
 import type { AppSettings, DiagramDraft, DiagramEdge, DiagramLayoutKind, DiagramNode } from '../shared/types';
 import { jsonWithOllama } from './ollama';
 import { classifyWithOpenRouter } from './openrouter';
+import { classifyWithLiteLLM } from './litellm';
 
 const MAX_NODES = 24;
 const MAX_EDGES = 36;
@@ -90,6 +91,14 @@ export async function generateDiagramDraft(settings: AppSettings, sourceText: st
           DIAGRAM_SYSTEM_PROMPT,
           userPrompt,
         )
+      : settings.textProvider === 'litellm'
+        ? await classifyWithLiteLLM(
+            settings.litellmBaseUrl,
+            settings.litellmApiKey,
+            settings.litellmTextModel,
+            DIAGRAM_SYSTEM_PROMPT,
+            userPrompt,
+          )
       : await jsonWithOllama(
           settings.ollamaBaseUrl,
           settings.textModel,
